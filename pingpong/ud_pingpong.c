@@ -47,6 +47,10 @@
 
 #include "shared.h"
 
+#ifndef CLOCK_REALTIME_COARSE
+#define CLOCK_REALTIME_COARSE CLOCK_REALTIME
+#endif
+
 static struct cs_opts opts;
 static int max_credits = 128;
 static int credits = 128;
