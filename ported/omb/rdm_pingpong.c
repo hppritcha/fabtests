@@ -72,6 +72,7 @@ int loop = 10000;
 int skip_large = 10;
 int loop_large = 100;
 int large_message_size = 8192;
+size_t max_inject_size = 0;
 
 static int rx_depth = 512;
 static int thread_safe = 1; // default
@@ -273,6 +274,8 @@ static int init_fabric(void)
 		return ret;
 	}
 
+	max_inject_size = fi->tx_attr->inject_size;
+
 	/* Open fabric */
 	ret = fi_fabric(fi->fabric_attr, &fab, NULL);
 	if (ret) {
@@ -440,16 +443,23 @@ void *thread_fn(void *data)
 	pthread_barrier_wait(&barr);
 #endif
 
+prov_use->tx_attr->inject_size
 	if (myid == 0) {
 		peer = 1;
 		for (i = 0; i < loop + skip; i++) {
 			if (i == skip)
 				t_start = get_time_usec();
 
-			fi_rc = fi_tsend(ptd->ep, ptd->s_buf, size, NULL,
-					ptd->fi_addrs[peer], 0xDEADBEEF, NULL);
-			assert(!fi_rc);
-			ft_wait_for_comp_omb(ptd->scq, 1);
+			if (size <= max_inject_size) {
+				fi_rc = fi_tinject(ptd->ep, ptd->s_buf, size, NULL,
+						ptd->fi_addrs[peer], 0xDEADBEEF);
+				assert(!fi_rc);
+			} else {
+				fi_rc = fi_tsend(ptd->ep, ptd->s_buf, size, NULL,
+						ptd->fi_addrs[peer], 0xDEADBEEF, NULL);
+				assert(!fi_rc);
+				ft_wait_for_comp_omb(ptd->scq, 1);
+			}
 
 			fi_rc = fi_trecv(ptd->ep, ptd->r_buf, size, NULL,
 					ptd->fi_addrs[peer], 0xDEADBEEF, 0, NULL);
@@ -466,10 +476,16 @@ void *thread_fn(void *data)
 			assert(!fi_rc);
 			ft_wait_for_comp_omb(ptd->rcq, 1);
 
-			fi_rc = fi_tsend(ptd->ep, ptd->s_buf, size, NULL,
-					ptd->fi_addrs[peer], 0xDEADBEEF, NULL);
-			assert(!fi_rc);
-			ft_wait_for_comp_omb(ptd->scq, 1);
+			if (size <= max_inject_size) {
+				fi_rc = fi_tinject(ptd->ep, ptd->s_buf, size, NULL,
+						ptd->fi_addrs[peer], 0xDEADBEEF, NULL);
+				assert(!fi_rc);
+			} else {
+				fi_rc = fi_tsend(ptd->ep, ptd->s_buf, size, NULL,
+						ptd->fi_addrs[peer], 0xDEADBEEF);
+				assert(!fi_rc);
+				ft_wait_for_comp_omb(ptd->scq, 1);
+			}
 		}
 	}
 
